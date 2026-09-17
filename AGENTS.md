@@ -64,8 +64,21 @@ All routers use prefix `/api` (defined in `app/api/__init__.py`).
 - `_update_stock(db, producto_id, cantidad, sumar)` — sumar=True adds, sumar=False subtracts
 - `_build_response(db, entity)` builds dict with nested nombres (proveedor_nombre, cliente_nombre, etc.) and categoria
 - `num_comprobante` auto-generated: 8-digit zero-padded from `Comprobante.numero` with `with_for_update` lock; `automatico: bool` controls behavior; Manual mode does NOT increment `Comprobante.numero`
-- Date from frontend is date-only; backend assigns current time via `datetime.combine(fecha.date(), datetime.now().time())`
-- **Venta**: total = `subtotal + (subtotal * impuesto/100) - (subtotal * descuento/100)`
+- Date from frontend is date-only; backend assigns current time in `America/La_Paz` via `datetime.combine(fecha.date(), ahora_local().time())` (`ahora_local()` = `app/utils/fechas.py`)
+- **Venta (impuestos)**: el precio por línea se calcula con `_precio_item` = `precio × (1 + IVA/100) × (1 + IT/100)` si `impuesto > 0` (IVA 13%, IT 3% embebidos). `total = Σ cantidad × precio_final − subtotal × descuento/100`
+
+### Zona horaria
+- Zona oficial: `America/La_Paz` (offset `-04:00`, sin horario de verano).
+- `app/utils/fechas.py` expone `ahora_local()` (datetime naive) y `DB_OFFSET`.
+- Campos `fecha`, `fecha_vencimiento`, `_marcar_vencidas`, `fecha_registro`/`fecha_actualizado` (modelos base) y default de rangos de reportes usan `ahora_local()`.
+- La sesión MySQL se fija a `-04:00` vía `connect_args={"init_command": "SET time_zone = '-04:00'"}` en `app/database.py` para que `NOW()` coincida.
+
+### Cotización → Venta
+- `convertir_en_venta` (`crud/cotizacion.py`): solo `Confirmado` sin `venta_id`.
+- Cantidades normalizadas a **unidades principales enteras** (`_cantidad_principal_entera`, ROUND_HALF_UP); ese valor se usa en validación de stock, subtotal y `_update_stock`.
+- Precio por unidad principal = `precio_venta / factor` (2 decimales). `impuesto=13`/`it=3` si `con_factura`, `descuento` se traslada de la cotización.
+- `num_comprobante` auto (8 dígitos, `with_for_update`) o manual (`automatico=false`).
+- Anular una venta convertida: revierte stock, elimina la venta y devuelve la cotización a `Enviado` (`anular_venta`).
 
 ### Anular (Compra/Venta)
 - `PUT /api/{entity}s/{id}/anular` changes estado to "ANULADO" (auto-creates if missing via `_get_estado_anulado`)

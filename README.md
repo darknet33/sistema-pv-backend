@@ -162,11 +162,11 @@ Prefijo general `/api` (definido en `app/api/__init__.py`).
 - Estados automáticos: `Enviado` → `Confirmado` → convertida en venta (o `Vencido`).
 - `_marcar_vencidas()`: al listar/obtener, toda cotización `Enviado` con `fecha_vencimiento < now` pasa a `Vencido`.
 - Número auto-generado: `COT-{id:06d}` (p. ej. `COT-000042`).
-- Fechas: el frontend envía solo fecha; el backend asigna hora actual (`datetime.combine(fecha.date(), datetime.now().time())`).
-- Detalle: cada línea guarda `cantidad`, `costo`, `utilidad_pct` y `precio_venta` calculado = `costo + (costo * utilidad_pct / 100)` redondeado a 2 decimales.
-- Totales: `subtotal = Σ cantidad * precio_venta`; `iva = subtotal * 16%` si `con_factura`; `descuento = subtotal * descuento%`; `total = subtotal + iva - descuento`.
+- Fechas: el frontend envía solo fecha; el backend asigna la hora en zona `America/La_Paz` (`datetime.combine(fecha.date(), ahora_local().time())`).
+- Detalle: cada línea guarda `cantidad`, `costo`, `utilidad_pct` y `precio_venta` calculado = `costo + (costo * utilidad_pct / 100)` redondeado a 2 decimales; si `con_factura`, ese precio se multiplica por `(1 + IVA/100) × (1 + IT/100)` con **IVA 13% e IT 3% embebidos**.
+- Totales: `subtotal = Σ cantidad * precio_venta` (ya con impuesto si `con_factura`); `descuento = subtotal * descuento%`; `total = subtotal - descuento`. Los campos `iva`/`it` de la cotización son informativos (`subtotal × 13/100`, `subtotal × 3/100`), no se suman al total.
 - `validez_dias` por defecto 15 → `fecha_vencimiento = fecha + validez_dias`.
-- `convertir-venta` (body `ConvertirVentaRequest`): solo cotizaciones `Confirmado` y sin `venta_id`. Valida stock (`_validar_stock_para_venta`), crea la `Venta` con `num_comprobante` auto (8 dígitos, con `with_for_update` en `Comprobante.numero`) o manual (`automatico=false`), descuenta stock por detalle (`_update_stock`), y enlaza `cotizacion.venta_id`. IVA 16% si `con_factura`. El descuento de la cotización se traslada a la venta. Crea el estado `Pendiente` si falta.
+- `convertir-venta` (body `ConvertirVentaRequest`): solo cotizaciones `Confirmado` y sin `venta_id`. Valida stock con las cantidades normalizadas a **unidades principales enteras** (ROUND_HALF_UP, `_cantidad_principal_entera`); ese mismo valor se usa en subtotal y descuento de stock (`_update_stock`). Precio por unidad principal = `precio_venta / factor`. Crea la `Venta` con `num_comprobante` auto (8 dígitos, con `with_for_update` en `Comprobante.numero`) o manual (`automatico=false`), y enlaza `cotizacion.venta_id`. `impuesto=13` e `it=3` si `con_factura` (si no, 0). El descuento de la cotización se traslada a la venta; crea el estado `Pendiente` si falta. Anular la venta resultante revierte el stock, la elimina y vuelve la cotización a `Enviado` (`anular_venta`).
 - Las respuestas incluyen `usuario_username`, datos del cliente (razón social, nit, celular, dirección) y producto (nombre, código, categoría, imagen).
 
 ### Reportes (`/api/reportes`)
@@ -208,6 +208,7 @@ Prefijo general `/api` (definido en `app/api/__init__.py`).
 ## Convenciones
 
 - **Moneda**: Bs. (Bolivianos)
+- **Zona horaria**: todas las fechas se generan y comparan en `America/La_Paz` (sin horario de verano, offset `-04:00`). `app.utils.fechas.ahora_local()` devuelve la hora local **naive**; la usan `fecha`, `fecha_vencimiento`, `_marcar_vencidas`, `fecha_registro`/`fecha_actualizado`. La sesión MySQL se fija a `-04:00` (`init_command` en `app/database.py`) para que `NOW()` coincida. El frontend envía `YYYY-MM-DD` (sin hora); la hora la asigna el backend. La visualización (Day.js) usa la zona horaria del navegador.
 - **Decimales**: Pydantic envía como string
 - **N° Comprobante**: 8 dígitos, auto-generado con opción Manual (`automatico`); Manual NO incrementa `Comprobante.numero`
 - **Anular**: revierte stock, requiere estado ANULADO para eliminar
