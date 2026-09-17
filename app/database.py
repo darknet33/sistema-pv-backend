@@ -21,7 +21,14 @@ Base = declarative_base()
 def init_db():
     global engine, SessionLocal
     if engine is None:
-        engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
+        # Sesión MySQL fijada a la zona horaria del sistema (Bolivia, -04:00)
+        # para que NOW()/func.now() coincidan con app.utils.fechas.ahora_local().
+        engine = create_engine(
+            DATABASE_URL,
+            echo=False,
+            pool_pre_ping=True,
+            connect_args={"init_command": "SET time_zone = '-04:00'"},
+        )
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         import app.models  # noqa: F401
         Base.metadata.create_all(bind=engine)

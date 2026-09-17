@@ -1,5 +1,16 @@
 from datetime import datetime
 from typing import Optional
+from zoneinfo import ZoneInfo
+
+# Zona horaria oficial del sistema (Bolivia, sin horario de verano: -04:00)
+TIME_ZONE = ZoneInfo("America/La_Paz")
+DB_OFFSET = "-04:00"
+
+
+def ahora_local() -> datetime:
+    """Fecha/hora actual en America/La_Paz, naive (sin tzinfo) para guardar en MySQL."""
+    return datetime.now(TIME_ZONE).replace(tzinfo=None)
+
 
 def formatear_fecha(fecha: datetime, formato: str = "%Y-%m-%d") -> str:
     if not fecha:

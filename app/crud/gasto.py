@@ -7,6 +7,7 @@ from app.models.estado import Estado
 from app.models.usuario import Usuario
 from app.schemas.gasto import GastoCreate, GastoUpdate
 from app.utils import capitalizar
+from app.utils.fechas import ahora_local
 
 def _validate_foreign_keys(db: Session, categoria_gasto_id: int, estado_id: int):
     categoria = db.query(CategoriaGasto).filter(CategoriaGasto.id == categoria_gasto_id).first()
@@ -59,7 +60,7 @@ def create_gasto(db: Session, gasto: GastoCreate, usuario_id: int):
     _validate_foreign_keys(db, gasto.categoria_gasto_id, gasto.estado_id)
 
     fecha = gasto.fecha if isinstance(gasto.fecha, datetime) else datetime.combine(gasto.fecha, datetime.min.time())
-    fecha = datetime.combine(fecha.date(), datetime.now().time())
+    fecha = datetime.combine(fecha.date(), ahora_local().time())
 
     db_gasto = Gasto(
         fecha=fecha,
@@ -86,7 +87,7 @@ def update_gasto(db: Session, gasto_id: int, gasto: GastoUpdate):
 
     if gasto.fecha is not None:
         fecha = gasto.fecha if isinstance(gasto.fecha, datetime) else datetime.combine(gasto.fecha, datetime.min.time())
-        db_gasto.fecha = datetime.combine(fecha.date(), datetime.now().time())
+        db_gasto.fecha = datetime.combine(fecha.date(), ahora_local().time())
     if gasto.categoria_gasto_id is not None:
         db_gasto.categoria_gasto_id = gasto.categoria_gasto_id
     if gasto.descripcion is not None:

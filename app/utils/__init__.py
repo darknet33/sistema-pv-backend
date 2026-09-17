@@ -1,6 +1,6 @@
 from typing import Optional
 from app.utils.excel import export_to_excel, import_from_excel
-from app.utils.fechas import formatear_fecha, parse_fecha
+from app.utils.fechas import formatear_fecha, parse_fecha, ahora_local
 
 
 def capitalizar(texto: Optional[str]) -> Optional[str]:

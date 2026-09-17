@@ -16,7 +16,7 @@ from app.models.venta_detalle import VentaDetalle
 from app.models.producto_unidad import ProductoUnidad
 from app.models.unidad_medida import UnidadMedida
 from app.schemas.cotizacion import CotizacionCreate, CotizacionUpdate, ConvertirVentaRequest
-from app.utils import capitalizar, a_mayusculas
+from app.utils import capitalizar, a_mayusculas, ahora_local
 from app.crud.venta import _validar_stock_para_venta, _update_stock
 
 IVA_RATE = Decimal("13")
@@ -40,7 +40,7 @@ def _precio_venta(costo: Decimal, utilidad_pct: Decimal, con_factura: bool = Fal
 
 
 def _marcar_vencidas(db: Session):
-    ahora = datetime.now()
+    ahora = ahora_local()
     vencidas = db.query(Cotizacion).filter(
         Cotizacion.estado == ESTADO_ENVIADO,
         Cotizacion.fecha_vencimiento < ahora,
@@ -219,7 +219,20 @@ def _calcular_totales(cot, con_factura: bool):
 
 def _fecha_hora(fecha: datetime) -> datetime:
     fecha = fecha if isinstance(fecha, datetime) else datetime.combine(fecha, datetime.min.time())
-    return datetime.combine(fecha.date(), datetime.now().time())
+    return datetime.combine(fecha.date(), ahora_local().time())
+
+
+def _cantidad_principal_entera(db: Session, producto_id: int, unidad_id: int, cantidad) -> int:
+    """Cantidad de una línea normalizada a unidades principales enteras.
+
+    El stock y `detalles_venta.cantidad` son enteros, así que la cantidad en su
+    unidad (cantidad * factor) se redondea a unidad completa (ROUND_HALF_UP).
+    Este valor es el único que se usa para validar stock, subtotal y descuento.
+    """
+    uinfo = _get_unidad_info(db, producto_id, unidad_id)
+    factor = uinfo["factor"]
+    valor = Decimal(cantidad) * factor if factor > 0 else Decimal(cantidad)
+    return int(valor.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 def _resolve_costo_por_unidad(db: Session, producto_id: int, unidad_id: int, costo_enviado: Decimal) -> Decimal:
@@ -410,14 +423,13 @@ def convertir_en_venta(db: Session, cotizacion_id: int, payload: ConvertirVentaR
         estado_id = estado_pendiente.id
 
     try:
-        # El stock se gestiona en la unidad principal: convertir cada cantidad
-        # de la línea (en su unidad) a cantidad en unidades principales antes de validar.
+        # El stock se gestiona en la unidad principal (entera): la cantidad de cada
+        # línea se normaliza a unidades principales exactas (_cantidad_principal_entera)
+        # y ese MISMO valor se usa para validar stock, subtotal y descuento de stock.
         from types import SimpleNamespace
         detalles_en_principal = []
         for d in detalles:
-            uinfo = _get_unidad_info(db, d.producto_id, d.unidad_id)
-            factor = uinfo["factor"]
-            cant_principal = Decimal(d.cantidad) * factor if factor > 0 else Decimal(d.cantidad)
+            cant_principal = _cantidad_principal_entera(db, d.producto_id, d.unidad_id, d.cantidad)
             detalles_en_principal.append(SimpleNamespace(producto_id=d.producto_id, cantidad=cant_principal))
         _validar_stock_para_venta(db, detalles_en_principal)
 
@@ -435,6 +447,7 @@ def convertir_en_venta(db: Session, cotizacion_id: int, payload: ConvertirVentaR
         # El stock y los montos se gestionan SIEMPRE en la unidad principal:
         #   cantidad_principal = cantidad (en su unidad) * factor  -> nro de unidades principales
         #   precio por unidad principal = precio_venta (de la cotización, ya calculado) / factor
+        #   utilidad = costo * utilidad_pct / 100
         # El total de la venta se calcula desde las líneas convertidas (precios preservados),
         # SIN volver a aplicar la fórmula compuesta de IVA/IT.
         converted = []
@@ -442,17 +455,17 @@ def convertir_en_venta(db: Session, cotizacion_id: int, payload: ConvertirVentaR
         for d in detalles:
             uinfo = _get_unidad_info(db, d.producto_id, d.unidad_id)
             factor = uinfo["factor"]
-            cantidad_principal = _q(Decimal(d.cantidad) * factor) if factor > 0 else Decimal(d.cantidad)
-            precio_venta_principal = _q(Decimal(d.precio_venta) / factor) if factor > 0 else Decimal(d.precio_venta)
+            cantidad_principal = _cantidad_principal_entera(db, d.producto_id, d.unidad_id, d.cantidad)
+            precio_venta_principal = _q(Decimal(d.precio_venta) / factor) if factor > 0 else _q(Decimal(d.precio_venta))
             utilidad = _q(Decimal(d.costo) * Decimal(d.utilidad_pct) / 100)
             converted.append((d, cantidad_principal, precio_venta_principal, utilidad))
-            subtotal += _q(int(cantidad_principal) * precio_venta_principal)
+            subtotal += _q(cantidad_principal * precio_venta_principal)
 
         subtotal = _q(subtotal)
         total = _q(subtotal - _q(subtotal * descuento / 100))
 
         db_venta = Venta(
-            fecha=datetime.combine(db_cot.fecha.date(), datetime.now().time()),
+            fecha=datetime.combine(db_cot.fecha.date(), ahora_local().time()),
             cliente_id=db_cot.cliente_id,
             comprobante_id=payload.comprobante_id,
             num_comprobante=num_comprobante,
@@ -471,12 +484,12 @@ def convertir_en_venta(db: Session, cotizacion_id: int, payload: ConvertirVentaR
             db_detalle = VentaDetalle(
                 venta_id=db_venta.id,
                 producto_id=d.producto_id,
-                cantidad=int(cantidad_principal),
+                cantidad=cantidad_principal,
                 precio=precio_venta_principal,
                 utilidad=utilidad,
             )
             db.add(db_detalle)
-            _update_stock(db, d.producto_id, int(cantidad_principal), sumar=False)
+            _update_stock(db, d.producto_id, cantidad_principal, sumar=False)
 
         db_cot.venta_id = db_venta.id
         db.commit()

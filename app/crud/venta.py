@@ -11,6 +11,7 @@ from app.models.estado import Estado
 from app.models.usuario import Usuario
 from app.models.cotizacion import Cotizacion
 from app.schemas.venta import VentaCreate, VentaUpdate
+from app.utils.fechas import ahora_local
 
 IVA_RATE = Decimal("13")
 IT_RATE = Decimal("3")
@@ -158,7 +159,7 @@ def create_venta(db: Session, venta: VentaCreate, usuario_id: int):
         num_comprobante = venta.num_comprobante or ''
 
     fecha = venta.fecha if isinstance(venta.fecha, datetime) else datetime.combine(venta.fecha, datetime.min.time())
-    fecha = datetime.combine(fecha.date(), datetime.now().time())
+    fecha = datetime.combine(fecha.date(), ahora_local().time())
 
     db_venta = Venta(
         fecha=fecha,

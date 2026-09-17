@@ -5,6 +5,7 @@ from app.database import get_db
 from datetime import datetime, date, timedelta
 from typing import Optional
 import io
+from app.utils.fechas import ahora_local
 
 router = APIRouter()
 
@@ -15,7 +16,7 @@ def get_kardex(producto_id: int, fecha_inicio: Optional[datetime] = None, fecha_
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     fi = fecha_inicio or (producto.fecha_registro or datetime(2000, 1, 1))
-    ff = fecha_fin or datetime.now()
+    ff = fecha_fin or ahora_local()
     try:
         from app.reports.kardex import generar_kardex
         buffer = generar_kardex(db, producto_id, fi, ff)

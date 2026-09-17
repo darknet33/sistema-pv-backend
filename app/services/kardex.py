@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime
 from app.models.producto import Producto
+from app.utils.fechas import ahora_local
 from app.models.compra import Compra
 from app.models.compra_detalle import CompraDetalle
 from app.models.venta import Venta
@@ -45,7 +46,7 @@ def obtener_kardex(db: Session, producto_id: int, fecha_inicio: datetime = None,
     if not fecha_inicio:
         fecha_inicio = producto.fecha_registro or datetime(2000, 1, 1)
     if not fecha_fin:
-        fecha_fin = datetime.now()
+        fecha_fin = ahora_local()
 
     entradas_previas = sum(
         e.cantidad for e in _query_entradas(db, producto_id)

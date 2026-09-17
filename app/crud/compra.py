@@ -10,6 +10,7 @@ from app.models.estado import Estado
 from app.models.categoria import Categoria
 from app.models.usuario import Usuario
 from app.schemas.compra import CompraCreate, CompraUpdate
+from app.utils.fechas import ahora_local
 
 def _validate_foreign_keys(db: Session, proveedor_id: int, comprobante_id: int, estado_id: int, detalles: list):
     proveedor = db.query(Proveedor).filter(Proveedor.id == proveedor_id).first()
@@ -104,7 +105,7 @@ def create_compra(db: Session, compra: CompraCreate, usuario_id: int):
         num_comprobante = compra.num_comprobante or ''
 
     fecha = compra.fecha if isinstance(compra.fecha, datetime) else datetime.combine(compra.fecha, datetime.min.time())
-    fecha = datetime.combine(fecha.date(), datetime.now().time())
+    fecha = datetime.combine(fecha.date(), ahora_local().time())
 
     db_compra = Compra(
         fecha=fecha,

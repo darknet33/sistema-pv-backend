@@ -9,6 +9,7 @@ from app.models.categoria import Categoria
 from app.models.usuario import Usuario
 from app.schemas.nota_entrega import NotaEntregaCreate
 from app.utils import capitalizar
+from app.utils.fechas import ahora_local
 
 
 def _validate_foreign_keys(db: Session, venta_id: int, detalles: list):
@@ -87,10 +88,10 @@ def create_nota_entrega(db: Session, nota: NotaEntregaCreate, usuario_id: int):
 
     venta = db.query(Venta).filter(Venta.id == nota.venta_id).first()
 
-    fecha = nota.fecha or datetime.now()
+    fecha = nota.fecha or ahora_local()
     if not isinstance(fecha, datetime):
         fecha = datetime.combine(fecha, datetime.min.time())
-    fecha = datetime.combine(fecha.date(), datetime.now().time())
+    fecha = datetime.combine(fecha.date(), ahora_local().time())
 
     db_nota = NotaEntrega(
         numero="NE-000000",
