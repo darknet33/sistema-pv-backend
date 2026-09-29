@@ -90,8 +90,32 @@ def top_productos_json(fecha_inicio: datetime, fecha_fin: datetime, limite: int 
     from app.services.reportes import productos_mas_vendidos
     return productos_mas_vendidos(db, fecha_inicio, fecha_fin, limite)
 
+# Periodos disponibles para el dashboard.
+# dias: None = todo el historial. agrupacion: 'dia' | 'mes' (bucket de las gráficas).
+PERIODOS_DASHBOARD = {
+    'semana': {'dias': 7,    'agrupacion': 'dia', 'label': 'Últimos 7 días',   'corto': '7d'},
+    'mes':    {'dias': 30,   'agrupacion': 'dia', 'label': 'Últimos 30 días',  'corto': '30d'},
+    'todo':   {'dias': None, 'agrupacion': 'mes', 'label': 'Todo el historial', 'corto': 'total'},
+}
+
+
+def _generar_buckets(desde: date, hasta: date, agrupacion: str, limite: int = 400) -> list[date]:
+    """Fechas clave de la serie, desde `desde` hasta `hasta`, en el grano de `agrupacion`."""
+    buckets: list[date] = []
+    actual = desde
+    while actual <= hasta and len(buckets) < limite:
+        if agrupacion == 'mes':
+            actual = date(actual.year, actual.month, 1)
+        buckets.append(actual)
+        if agrupacion == 'mes':
+            actual = date(actual.year + 1, 1, 1) if actual.month == 12 else date(actual.year, actual.month + 1, 1)
+        else:
+            actual = actual + timedelta(days=1)
+    return buckets
+
+
 @router.get("/dashboard")
-def dashboard(db: Session = Depends(get_db)):
+def dashboard(periodo: str = Query("mes", description="semana | mes | todo"), db: Session = Depends(get_db)):
     from app.models.venta import Venta
     from app.models.venta_detalle import VentaDetalle
     from app.models.compra import Compra
@@ -101,70 +125,130 @@ def dashboard(db: Session = Depends(get_db)):
     from app.models.usuario import Usuario
     from sqlalchemy import func
 
-    hoy = date.today()
+    clave = (periodo or '').strip().lower()
+    config = PERIODOS_DASHBOARD.get(clave)
+    if not config:
+        raise HTTPException(
+            status_code=400,
+            detail="Periodo inválido. Valores permitidos: " + ", ".join(PERIODOS_DASHBOARD.keys()),
+        )
+
+    dias = config['dias']
+    agrupacion = config['agrupacion']
+
+    ahora = ahora_local()
+    hoy = ahora.date()
     inicio_hoy = datetime(hoy.year, hoy.month, hoy.day, 0, 0, 0)
-    fin_hoy = datetime(hoy.year, hoy.month, hoy.day, 23, 59, 59)
+    fin_hoy = datetime(hoy.year, hoy.month, hoy.day, 23, 59, 59, 999999)
+    inicio_periodo = inicio_hoy - timedelta(days=dias - 1) if dias else None
 
-    inicio_30d = inicio_hoy - timedelta(days=29)
+    def rango(columna):
+        if inicio_periodo is None:
+            return columna <= fin_hoy
+        return columna.between(inicio_periodo, fin_hoy)
 
-    # Resumen hoy
-    ventas_hoy = db.query(func.count(Venta.id), func.coalesce(func.sum(Venta.total), 0)).filter(Venta.fecha.between(inicio_hoy, fin_hoy)).first()
-    compras_hoy = db.query(func.count(Compra.id), func.coalesce(func.sum(Compra.total), 0)).filter(Compra.fecha.between(inicio_hoy, fin_hoy)).first()
+    def bucket(columna):
+        return func.date_format(columna, '%Y-%m-01') if agrupacion == 'mes' else func.date(columna)
 
-    # Ventas por dia (últimos 30 días)
-    ventas_por_dia = db.query(
-        func.date(Venta.fecha).label('fecha'),
+    # Resumen del periodo
+    ventas_periodo = db.query(func.count(Venta.id), func.coalesce(func.sum(Venta.total), 0)).filter(rango(Venta.fecha)).first()
+    compras_periodo = db.query(func.count(Compra.id), func.coalesce(func.sum(Compra.total), 0)).filter(rango(Compra.fecha)).first()
+
+    # Ventas por bucket
+    ventas_por_bucket = db.query(
+        bucket(Venta.fecha).label('bucket'),
         func.count(Venta.id).label('cantidad'),
         func.coalesce(func.sum(Venta.total), 0).label('total'),
-    ).filter(Venta.fecha.between(inicio_30d, fin_hoy)).group_by(func.date(Venta.fecha)).order_by(func.date(Venta.fecha)).all()
+    ).filter(rango(Venta.fecha)).group_by(bucket(Venta.fecha)).order_by(bucket(Venta.fecha)).all()
 
-    # Compras por dia (últimos 30 días)
-    compras_por_dia = db.query(
-        func.date(Compra.fecha).label('fecha'),
+    # Compras por bucket
+    compras_por_bucket = db.query(
+        bucket(Compra.fecha).label('bucket'),
         func.count(Compra.id).label('cantidad'),
         func.coalesce(func.sum(Compra.total), 0).label('total'),
-    ).filter(Compra.fecha.between(inicio_30d, fin_hoy)).group_by(func.date(Compra.fecha)).order_by(func.date(Compra.fecha)).all()
+    ).filter(rango(Compra.fecha)).group_by(bucket(Compra.fecha)).order_by(bucket(Compra.fecha)).all()
 
-    # Utilidad por dia (últimos 30 días) — suma de utilidad * cantidad en detalles de ventas no anuladas
-    utilidad_por_dia = db.query(
-        func.date(Venta.fecha).label('fecha'),
+    # Utilidad por bucket — suma de utilidad * cantidad en detalles de ventas no anuladas
+    utilidad_por_bucket = db.query(
+        bucket(Venta.fecha).label('bucket'),
         func.coalesce(func.sum(VentaDetalle.utilidad * VentaDetalle.cantidad), 0).label('total'),
     ).join(Venta, VentaDetalle.venta_id == Venta.id).join(Estado, Venta.estado_id == Estado.id).filter(
-        Venta.fecha.between(inicio_30d, fin_hoy),
+        rango(Venta.fecha),
         func.upper(Estado.nombre) != 'ANULADO',
-    ).group_by(func.date(Venta.fecha)).order_by(func.date(Venta.fecha)).all()
+    ).group_by(bucket(Venta.fecha)).order_by(bucket(Venta.fecha)).all()
 
-    # Gastos por dia (últimos 30 días) — solo gastos activos no anulados
-    gastos_por_dia = db.query(
-        func.date(Gasto.fecha).label('fecha'),
+    # Gastos por bucket — solo gastos activos no anulados
+    gastos_por_bucket = db.query(
+        bucket(Gasto.fecha).label('bucket'),
         func.coalesce(func.sum(Gasto.monto), 0).label('total'),
     ).join(Estado, Gasto.estado_id == Estado.id).filter(
-        Gasto.fecha.between(inicio_30d, fin_hoy),
+        rango(Gasto.fecha),
         Gasto.activo == True,
         func.upper(Estado.nombre) != 'ANULADO',
-    ).group_by(func.date(Gasto.fecha)).order_by(func.date(Gasto.fecha)).all()
+    ).group_by(bucket(Gasto.fecha)).order_by(bucket(Gasto.fecha)).all()
 
     # Top vendedores
     top_vendedores = db.query(
         Usuario.username,
         func.count(Venta.id).label('cantidad'),
         func.coalesce(func.sum(Venta.total), 0).label('total'),
-    ).join(Venta, Usuario.id == Venta.usuario_id).filter(Venta.fecha.between(inicio_30d, fin_hoy)).group_by(Usuario.id).order_by(func.sum(Venta.total).desc()).limit(10).all()
+    ).join(Venta, Usuario.id == Venta.usuario_id).filter(rango(Venta.fecha)).group_by(Usuario.id).order_by(func.sum(Venta.total).desc()).limit(10).all()
 
-    # Stock bajo
+    # Stock bajo (no depende del periodo)
     stock_bajo = db.query(Producto).filter(Producto.stock_actual < Producto.stock_minimo).order_by(Producto.stock_actual.asc()).all()
 
+    # Serie unificada, con buckets vacíos en cero para que las gráficas no tengan saltos
+    acumulado: dict[str, dict] = {}
+
+    def slot(fecha: str) -> dict:
+        return acumulado.setdefault(fecha, {
+            'fecha': fecha,
+            'ventas': 0.0, 'ventas_cantidad': 0,
+            'compras': 0.0, 'compras_cantidad': 0,
+            'utilidad': 0.0, 'gastos': 0.0,
+        })
+
+    for r in ventas_por_bucket:
+        s = slot(str(r.bucket))
+        s['ventas'] = float(r.total)
+        s['ventas_cantidad'] = r.cantidad
+    for r in compras_por_bucket:
+        s = slot(str(r.bucket))
+        s['compras'] = float(r.total)
+        s['compras_cantidad'] = r.cantidad
+    for r in utilidad_por_bucket:
+        slot(str(r.bucket))['utilidad'] = float(r.total)
+    for r in gastos_por_bucket:
+        slot(str(r.bucket))['gastos'] = float(r.total)
+
+    if inicio_periodo is not None:
+        desde_bucket = inicio_periodo.date()
+    else:
+        desde_bucket = min(
+            (date.fromisoformat(f) for f in acumulado),
+            default=date(hoy.year, hoy.month, 1),
+        )
+
+    series = []
+    for b in _generar_buckets(desde_bucket, hoy, agrupacion):
+        s = slot(b.isoformat())
+        s['neta'] = round(s['utilidad'] - s['gastos'], 2)
+        series.append(s)
+
     return {
-        'resumen_hoy': {
-            'ventas_cantidad': ventas_hoy[0],
-            'ventas_total': float(ventas_hoy[1]),
-            'compras_cantidad': compras_hoy[0],
-            'compras_total': float(compras_hoy[1]),
+        'periodo': clave,
+        'periodo_label': config['label'],
+        'periodo_corto': config['corto'],
+        'agrupacion': agrupacion,
+        'desde': inicio_periodo.date().isoformat() if inicio_periodo else (series[0]['fecha'] if series else None),
+        'hasta': hoy.isoformat(),
+        'resumen': {
+            'ventas_cantidad': ventas_periodo[0],
+            'ventas_total': float(ventas_periodo[1]),
+            'compras_cantidad': compras_periodo[0],
+            'compras_total': float(compras_periodo[1]),
         },
-        'ventas_por_dia': [{'fecha': str(r.fecha), 'cantidad': r.cantidad, 'total': float(r.total)} for r in ventas_por_dia],
-        'compras_por_dia': [{'fecha': str(r.fecha), 'cantidad': r.cantidad, 'total': float(r.total)} for r in compras_por_dia],
-        'utilidad_por_dia': [{'fecha': str(r.fecha), 'total': float(r.total)} for r in utilidad_por_dia],
-        'gastos_por_dia': [{'fecha': str(r.fecha), 'total': float(r.total)} for r in gastos_por_dia],
+        'series': series,
         'top_vendedores': [{'username': r.username, 'cantidad': r.cantidad, 'total': float(r.total)} for r in top_vendedores],
         'stock_bajo': [{
             'id': p.id,
