@@ -3,7 +3,7 @@ from fastapi import HTTPException
 from app.models.proveedor import Proveedor
 from app.models.compra import Compra
 from app.schemas.proveedor import ProveedorCreate
-from app.utils import capitalizar, a_mayusculas
+from app.utils import a_mayusculas
 
 def get_proveedor(db: Session, proveedor_id: int):
     return db.query(Proveedor).filter(Proveedor.id == proveedor_id).first()
@@ -17,10 +17,10 @@ def get_proveedores(db: Session, skip: int = 0, limit: int = 100, solo_activos: 
 def create_proveedor(db: Session, proveedor: ProveedorCreate):
     db_proveedor = Proveedor(
         nombre=a_mayusculas(proveedor.nombre),
-        nit=proveedor.nit,
-        materiales=capitalizar(proveedor.materiales),
-        contacto=capitalizar(proveedor.contacto),
-        celular_contacto=proveedor.celular_contacto,
+        nit=a_mayusculas(proveedor.nit),
+        materiales=a_mayusculas(proveedor.materiales),
+        contacto=a_mayusculas(proveedor.contacto),
+        celular_contacto=a_mayusculas(proveedor.celular_contacto),
         email_contacto=proveedor.email_contacto
     )
     db.add(db_proveedor)
@@ -32,10 +32,10 @@ def update_proveedor(db: Session, proveedor_id: int, proveedor: ProveedorCreate)
     db_proveedor = get_proveedor(db, proveedor_id)
     if db_proveedor:
         db_proveedor.nombre = a_mayusculas(proveedor.nombre)
-        db_proveedor.nit = proveedor.nit
-        db_proveedor.materiales = capitalizar(proveedor.materiales)
-        db_proveedor.contacto = capitalizar(proveedor.contacto)
-        db_proveedor.celular_contacto = proveedor.celular_contacto
+        db_proveedor.nit = a_mayusculas(proveedor.nit)
+        db_proveedor.materiales = a_mayusculas(proveedor.materiales)
+        db_proveedor.contacto = a_mayusculas(proveedor.contacto)
+        db_proveedor.celular_contacto = a_mayusculas(proveedor.celular_contacto)
         db_proveedor.email_contacto = proveedor.email_contacto
         db.commit()
         db.refresh(db_proveedor)

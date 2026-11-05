@@ -1,6 +1,7 @@
 import asyncio
 import os
 from fastapi import FastAPI
+from sqlalchemy import func
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.api import api_router
@@ -45,7 +46,8 @@ def _seed_module_por_nombre(db, nombre):
     from app.models.rol import Rol
     from app.models.rol_modulo import RolModulo
 
-    modulo = db.query(Modulo).filter(Modulo.nombre == nombre).first()
+    nombre = nombre.strip().upper()
+    modulo = db.query(Modulo).filter(func.upper(Modulo.nombre) == nombre).first()
     if not modulo:
         modulo = Modulo(nombre=nombre, activo=True)
         db.add(modulo)
@@ -74,7 +76,7 @@ def seed_empresa_module():
 
         db = SessionLocal()
         try:
-            _seed_module_por_nombre(db, "Empresa")
+            _seed_module_por_nombre(db, "EMPRESA")
             db.commit()
         finally:
             db.close()
@@ -91,7 +93,7 @@ def seed_cotizaciones_module():
 
         db = SessionLocal()
         try:
-            _seed_module_por_nombre(db, "Cotizaciones")
+            _seed_module_por_nombre(db, "COTIZACIONES")
             db.commit()
         finally:
             db.close()

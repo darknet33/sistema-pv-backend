@@ -9,7 +9,7 @@ class Cotizacion(BaseModel):
     fecha = Column(DateTime, nullable=False)
     fecha_vencimiento = Column(DateTime, nullable=False)
     cliente_id = Column(Integer, ForeignKey("clientes.id"))
-    estado = Column(String(20), nullable=False, default="Enviado")
+    estado = Column(String(20), nullable=False, default="ENVIADO")
     con_factura = Column(Boolean, default=False)
     incluir_imagenes = Column(Boolean, default=False)
     modalidad_pago = Column(String(100), nullable=False, default="")

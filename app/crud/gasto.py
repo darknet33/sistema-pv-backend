@@ -6,7 +6,9 @@ from app.models.categoria_gasto import CategoriaGasto
 from app.models.estado import Estado
 from app.models.usuario import Usuario
 from app.schemas.gasto import GastoCreate, GastoUpdate
-from app.utils import capitalizar
+from sqlalchemy import func
+
+from app.utils import a_mayusculas
 from app.utils.fechas import ahora_local
 
 def _validate_foreign_keys(db: Session, categoria_gasto_id: int, estado_id: int):
@@ -39,9 +41,9 @@ def _build_response(db: Session, gasto: Gasto):
     }
 
 def _get_estado_anulado(db: Session):
-    estado = db.query(Estado).filter(Estado.nombre == "Anulado").first()
+    estado = db.query(Estado).filter(func.upper(Estado.nombre) == "ANULADO").first()
     if not estado:
-        estado = Estado(nombre="Anulado")
+        estado = Estado(nombre="ANULADO")
         db.add(estado)
         db.flush()
     return estado
@@ -65,7 +67,7 @@ def create_gasto(db: Session, gasto: GastoCreate, usuario_id: int):
     db_gasto = Gasto(
         fecha=fecha,
         categoria_gasto_id=gasto.categoria_gasto_id,
-        descripcion=capitalizar(gasto.descripcion),
+        descripcion=a_mayusculas(gasto.descripcion),
         monto=gasto.monto,
         estado_id=gasto.estado_id,
         usuario_id=usuario_id,
@@ -91,7 +93,7 @@ def update_gasto(db: Session, gasto_id: int, gasto: GastoUpdate):
     if gasto.categoria_gasto_id is not None:
         db_gasto.categoria_gasto_id = gasto.categoria_gasto_id
     if gasto.descripcion is not None:
-        db_gasto.descripcion = capitalizar(gasto.descripcion)
+        db_gasto.descripcion = a_mayusculas(gasto.descripcion)
     if gasto.monto is not None:
         db_gasto.monto = gasto.monto
     if gasto.estado_id is not None:

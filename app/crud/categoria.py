@@ -3,7 +3,7 @@ from fastapi import HTTPException
 from app.models.categoria import Categoria
 from app.models.producto import Producto
 from app.schemas.categoria import CategoriaCreate
-from app.utils import capitalizar
+from app.utils import a_mayusculas
 
 def get_categoria(db: Session, categoria_id: int):
     return db.query(Categoria).filter(Categoria.id == categoria_id).first()
@@ -12,7 +12,7 @@ def get_categorias(db: Session, skip: int = 0, limit: int = 10000):
     return db.query(Categoria).offset(skip).limit(limit).all()
 
 def create_categoria(db: Session, categoria: CategoriaCreate):
-    db_categoria = Categoria(nombre=capitalizar(categoria.nombre))
+    db_categoria = Categoria(nombre=a_mayusculas(categoria.nombre))
     db.add(db_categoria)
     db.commit()
     db.refresh(db_categoria)
@@ -21,7 +21,7 @@ def create_categoria(db: Session, categoria: CategoriaCreate):
 def update_categoria(db: Session, categoria_id: int, categoria: CategoriaCreate):
     db_categoria = get_categoria(db, categoria_id)
     if db_categoria:
-        db_categoria.nombre = capitalizar(categoria.nombre)
+        db_categoria.nombre = a_mayusculas(categoria.nombre)
         db.commit()
         db.refresh(db_categoria)
     return db_categoria

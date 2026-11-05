@@ -1,3 +1,4 @@
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 from fastapi import HTTPException
 from datetime import datetime, date
@@ -183,9 +184,9 @@ def update_compra(db: Session, compra_id: int, compra: CompraUpdate):
     return _build_response(db, db_compra)
 
 def _get_estado_anulado(db: Session):
-    estado = db.query(Estado).filter(Estado.nombre == "Anulado").first()
+    estado = db.query(Estado).filter(func.upper(Estado.nombre) == "ANULADO").first()
     if not estado:
-        estado = Estado(nombre="Anulado")
+        estado = Estado(nombre="ANULADO")
         db.add(estado)
         db.flush()
     return estado

@@ -7,10 +7,11 @@ import bcrypt
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.token import TokenData
+from app.config import settings
 
-SECRET_KEY = "super-secret-key-change-in-production-2026"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+SECRET_KEY = settings.JWT_SECRET
+ALGORITHM = settings.JWT_ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 

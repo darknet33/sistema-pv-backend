@@ -8,7 +8,7 @@ from app.models.producto import Producto
 from app.models.categoria import Categoria
 from app.models.usuario import Usuario
 from app.schemas.nota_entrega import NotaEntregaCreate
-from app.utils import capitalizar
+from app.utils import a_mayusculas
 from app.utils.fechas import ahora_local
 
 
@@ -97,10 +97,10 @@ def create_nota_entrega(db: Session, nota: NotaEntregaCreate, usuario_id: int):
         numero="NE-000000",
         venta_id=nota.venta_id,
         fecha=fecha,
-        entregue_nombre=capitalizar(nota.entregue_nombre.strip()),
-        entregue_carnet=nota.entregue_carnet.strip(),
-        recibi_nombre=capitalizar(nota.recibi_nombre.strip()),
-        recibi_carnet=nota.recibi_carnet.strip(),
+        entregue_nombre=a_mayusculas(nota.entregue_nombre.strip()),
+        entregue_carnet=a_mayusculas(nota.entregue_carnet.strip()),
+        recibi_nombre=a_mayusculas(nota.recibi_nombre.strip()),
+        recibi_carnet=a_mayusculas(nota.recibi_carnet.strip()),
         usuario_id=usuario_id,
         activo=True,
     )

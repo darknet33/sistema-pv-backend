@@ -1,33 +1,52 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.usuario import UsuarioLogin, UsuarioAdminSetup
 from app.schemas.token import Token, LoginResponse
-from app.auth import authenticate_user, create_access_token, get_password_hash, get_current_user
+from app.auth import authenticate_user, create_access_token, get_password_hash, get_current_user_full
 from app.models.usuario import Usuario
 from app.models.rol import Rol
 from app.models.modulo import Modulo
 from app.models.rol_modulo import RolModulo
-from datetime import timedelta
+from app.config import settings
+from app.utils import a_mayusculas
 
 router = APIRouter()
 
 ADMIN_MODULES = [
-    "Dashboard",
-    "Productos",
-    "Categorias",
-    "Compras",
-    "Ventas",
-    "Clientes",
-    "Proveedores",
-    "Comprobantes",
-    "Estados",
-    "Reportes",
-    "Usuarios",
-    "Roles",
-    "Empresa",
-    "Cotizaciones",
+    "DASHBOARD",
+    "PRODUCTOS",
+    "CATEGORIAS",
+    "COMPRAS",
+    "VENTAS",
+    "CLIENTES",
+    "PROVEEDORES",
+    "COMPROBANTES",
+    "ESTADOS",
+    "REPORTES",
+    "USUARIOS",
+    "ROLES",
+    "EMPRESA",
+    "COTIZACIONES",
 ]
+
+@router.get("/session-config")
+async def get_session_config():
+    return {
+        "idle_timeout_minutes": settings.idle_timeout_minutes,
+        "token_expire_minutes": settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+    }
+
+@router.post("/refresh")
+async def refresh_access_token(current_user: Usuario = Depends(get_current_user_full)):
+    access_token = create_access_token(data={"sub": current_user.username})
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in_minutes": settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+        "idle_timeout_minutes": settings.idle_timeout_minutes,
+    }
 
 @router.get("/check-users")
 async def check_users(db: Session = Depends(get_db)):
@@ -42,7 +61,7 @@ async def setup_admin(usuario: UsuarioAdminSetup, db: Session = Depends(get_db))
             detail="Ya existen usuarios en el sistema"
         )
 
-    rol = db.query(Rol).filter(Rol.nombre == "ADMINISTRADOR").first()
+    rol = db.query(Rol).filter(func.upper(Rol.nombre) == "ADMINISTRADOR").first()
     if not rol:
         rol = Rol(nombre="ADMINISTRADOR")
         db.add(rol)
@@ -50,7 +69,7 @@ async def setup_admin(usuario: UsuarioAdminSetup, db: Session = Depends(get_db))
 
     created_module_ids = []
     for module_name in ADMIN_MODULES:
-        modulo = db.query(Modulo).filter(Modulo.nombre == module_name).first()
+        modulo = db.query(Modulo).filter(func.upper(Modulo.nombre) == module_name).first()
         if not modulo:
             modulo = Modulo(nombre=module_name, activo=True)
             db.add(modulo)
@@ -72,9 +91,9 @@ async def setup_admin(usuario: UsuarioAdminSetup, db: Session = Depends(get_db))
     new_user = Usuario(
         username=usuario.username,
         password=hashed_password,
-        nombres=usuario.nombres,
-        apellidos=usuario.apellidos,
-        cargo="Administrador",
+        nombres=a_mayusculas(usuario.nombres),
+        apellidos=a_mayusculas(usuario.apellidos),
+        cargo="ADMINISTRADOR",
         rol_id=rol.id,
         activo=True
     )
@@ -82,10 +101,7 @@ async def setup_admin(usuario: UsuarioAdminSetup, db: Session = Depends(get_db))
     db.commit()
     db.refresh(new_user)
 
-    access_token_expires = timedelta(minutes=30)
-    access_token = create_access_token(
-        data={"sub": new_user.username}, expires_delta=access_token_expires
-    )
+    access_token = create_access_token(data={"sub": new_user.username})
 
     modulos = db.query(Modulo).filter(Modulo.id.in_(created_module_ids), Modulo.activo == True).all()
 
@@ -114,10 +130,7 @@ async def login(usuario: UsuarioLogin, db: Session = Depends(get_db)):
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token_expires = timedelta(minutes=30)
-    access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
+    access_token = create_access_token(data={"sub": user.username})
 
     modulos_asignados = db.query(RolModulo).filter(RolModulo.rol_id == user.rol_id).all()
     modulo_ids = [rm.modulo_id for rm in modulos_asignados]
@@ -139,7 +152,7 @@ async def login(usuario: UsuarioLogin, db: Session = Depends(get_db)):
     }
 
 @router.get("/me", response_model=LoginResponse)
-async def get_me(db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+async def get_me(db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user_full)):
     modulos_asignados = db.query(RolModulo).filter(RolModulo.rol_id == current_user.rol_id).all()
     modulo_ids = [rm.modulo_id for rm in modulos_asignados]
     modulos = db.query(Modulo).filter(Modulo.id.in_(modulo_ids), Modulo.activo == True).all()

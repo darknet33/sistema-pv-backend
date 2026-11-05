@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import List
 from io import BytesIO
@@ -15,6 +16,7 @@ from app.models.producto import Producto
 from app.models.categoria import Categoria
 from app.models.usuario import Usuario
 from app.auth import SECRET_KEY, ALGORITHM, oauth2_scheme, get_current_user_full
+from app.utils import a_mayusculas
 from app.ws import broadcast_sync, broadcast_multiple_sync
 
 router = APIRouter()
@@ -105,23 +107,28 @@ async def import_productos(
                 continue
             
             resultados["procesados"] += 1
+
+            codigo = a_mayusculas(str(codigo).strip())
+            descripcion = a_mayusculas(str(descripcion))
+            marca = a_mayusculas(str(marca))
+            procedencia = a_mayusculas(str(procedencia)) if procedencia else ""
             
             categoria = None
             if categoria_nombre:
-                cat_nombre = str(categoria_nombre).strip()
-                categoria = db.query(Categoria).filter(Categoria.nombre == cat_nombre).first()
+                cat_nombre = a_mayusculas(str(categoria_nombre).strip())
+                categoria = db.query(Categoria).filter(func.upper(Categoria.nombre) == cat_nombre).first()
                 if not categoria:
                     categoria = Categoria(nombre=cat_nombre)
                     db.add(categoria)
                     db.flush()
             
-            producto_existente = db.query(Producto).filter(Producto.codigo == str(codigo).strip()).first()
+            producto_existente = db.query(Producto).filter(func.upper(Producto.codigo) == codigo).first()
             
             if producto_existente:
                 producto_existente.categoria_id = categoria.id if categoria else producto_existente.categoria_id
-                producto_existente.descripcion = str(descripcion)
-                producto_existente.marca = str(marca)
-                producto_existente.procedencia = str(procedencia) if procedencia else ""
+                producto_existente.descripcion = descripcion
+                producto_existente.marca = marca
+                producto_existente.procedencia = procedencia
                 producto_existente.precio = float(costo_bs) if costo_bs else 0
                 producto_existente.utilidad = float(utilidad_bs) if utilidad_bs else 0
                 producto_existente.stock_minimo = int(stock_minimo) if stock_minimo else 0
@@ -132,11 +139,11 @@ async def import_productos(
                 resultados["actualizados"] += 1
             else:
                 nuevo = Producto(
-                    codigo=str(codigo).strip(),
+                    codigo=codigo,
                     categoria_id=categoria.id if categoria else None,
-                    descripcion=str(descripcion),
-                    marca=str(marca),
-                    procedencia=str(procedencia) if procedencia else "",
+                    descripcion=descripcion,
+                    marca=marca,
+                    procedencia=procedencia,
                     precio=float(costo_bs) if costo_bs else 0,
                     utilidad=float(utilidad_bs) if utilidad_bs else 0,
                     stock_inicial=int(stock_inicial) if stock_inicial else 0,

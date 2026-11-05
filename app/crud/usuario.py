@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from app.models.usuario import Usuario
 from app.schemas.usuario import UsuarioCreate, UsuarioUpdate
 from app.auth import get_password_hash
-from app.utils import capitalizar
+from app.utils import a_mayusculas
 
 def get_usuario(db: Session, usuario_id: int):
     return db.query(Usuario).filter(Usuario.id == usuario_id).first()
@@ -18,9 +18,9 @@ def create_usuario(db: Session, usuario: UsuarioCreate):
     db_usuario = Usuario(
         username=usuario.username,
         password=hashed_password,
-        nombres=capitalizar(usuario.nombres),
-        apellidos=capitalizar(usuario.apellidos),
-        cargo=capitalizar(usuario.cargo),
+        nombres=a_mayusculas(usuario.nombres),
+        apellidos=a_mayusculas(usuario.apellidos),
+        cargo=a_mayusculas(usuario.cargo),
         rol_id=usuario.rol_id
     )
     db.add(db_usuario)
@@ -36,11 +36,11 @@ def update_usuario(db: Session, usuario_id: int, usuario: UsuarioUpdate):
         if usuario.password:
             db_usuario.password = get_password_hash(usuario.password)
         if usuario.nombres is not None:
-            db_usuario.nombres = capitalizar(usuario.nombres)
+            db_usuario.nombres = a_mayusculas(usuario.nombres)
         if usuario.apellidos is not None:
-            db_usuario.apellidos = capitalizar(usuario.apellidos)
+            db_usuario.apellidos = a_mayusculas(usuario.apellidos)
         if usuario.cargo is not None:
-            db_usuario.cargo = capitalizar(usuario.cargo)
+            db_usuario.cargo = a_mayusculas(usuario.cargo)
         if usuario.rol_id is not None:
             db_usuario.rol_id = usuario.rol_id
         db.commit()

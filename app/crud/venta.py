@@ -1,3 +1,4 @@
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 from fastapi import HTTPException
 from decimal import Decimal, ROUND_HALF_UP
@@ -263,9 +264,9 @@ def update_venta(db: Session, venta_id: int, venta: VentaUpdate):
     return _build_response(db, db_venta)
 
 def _get_estado_anulado(db: Session):
-    estado = db.query(Estado).filter(Estado.nombre == "Anulado").first()
+    estado = db.query(Estado).filter(func.upper(Estado.nombre) == "ANULADO").first()
     if not estado:
-        estado = Estado(nombre="Anulado")
+        estado = Estado(nombre="ANULADO")
         db.add(estado)
         db.flush()
     return estado
@@ -285,7 +286,7 @@ def anular_venta(db: Session, venta_id: int):
 
     cot = db.query(Cotizacion).filter(Cotizacion.venta_id == venta_id).first()
     if cot:
-        cot.estado = "Enviado"
+        cot.estado = "ENVIADO"
         cot.venta_id = None
         db.query(VentaDetalle).filter(VentaDetalle.venta_id == venta_id).delete()
         db.delete(db_venta)

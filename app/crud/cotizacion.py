@@ -1,3 +1,4 @@
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 from fastapi import HTTPException
 from datetime import datetime, timedelta
@@ -16,14 +17,14 @@ from app.models.venta_detalle import VentaDetalle
 from app.models.producto_unidad import ProductoUnidad
 from app.models.unidad_medida import UnidadMedida
 from app.schemas.cotizacion import CotizacionCreate, CotizacionUpdate, ConvertirVentaRequest
-from app.utils import capitalizar, a_mayusculas, ahora_local
+from app.utils import a_mayusculas, ahora_local
 from app.crud.venta import _validar_stock_para_venta, _update_stock
 
 IVA_RATE = Decimal("13")
 IT_RATE = Decimal("3")
-ESTADO_ENVIADO = "Enviado"
-ESTADO_CONFIRMADO = "Confirmado"
-ESTADO_VENCIDO = "Vencido"
+ESTADO_ENVIADO = "ENVIADO"
+ESTADO_CONFIRMADO = "CONFIRMADO"
+ESTADO_VENCIDO = "VENCIDO"
 
 
 def _q(value) -> Decimal:
@@ -42,7 +43,7 @@ def _precio_venta(costo: Decimal, utilidad_pct: Decimal, con_factura: bool = Fal
 def _marcar_vencidas(db: Session):
     ahora = ahora_local()
     vencidas = db.query(Cotizacion).filter(
-        Cotizacion.estado == ESTADO_ENVIADO,
+        func.upper(Cotizacion.estado) == ESTADO_ENVIADO,
         Cotizacion.fecha_vencimiento < ahora,
         Cotizacion.activo == True,
     ).all()
@@ -77,7 +78,8 @@ def _validate_foreign_keys(db: Session, cliente_id: int, detalles: list):
 
 
 def _get_estado_por_nombre(db: Session, nombre: str):
-    estado = db.query(Estado).filter(Estado.nombre == nombre).first()
+    nombre = a_mayusculas(nombre)
+    estado = db.query(Estado).filter(func.upper(Estado.nombre) == nombre).first()
     if not estado:
         estado = Estado(nombre=nombre)
         db.add(estado)
@@ -262,17 +264,17 @@ def create_cotizacion(db: Session, cot: CotizacionCreate, usuario_id: int):
         estado=ESTADO_ENVIADO,
         con_factura=bool(cot.con_factura),
         incluir_imagenes=bool(cot.incluir_imagenes),
-        modalidad_pago=capitalizar(cot.modalidad_pago or ""),
-        forma_pago=cot.forma_pago or "",
+        modalidad_pago=a_mayusculas(cot.modalidad_pago or ""),
+        forma_pago=a_mayusculas(cot.forma_pago or ""),
         validez_dias=int(cot.validez_dias or 15),
-        terminos_condiciones=capitalizar(cot.terminos_condiciones or ""),
+        terminos_condiciones=a_mayusculas(cot.terminos_condiciones or ""),
         descuento=_q(cot.descuento),
         usuario_id=usuario_id,
         activo=True,
         cliente_razon_social=a_mayusculas(cliente.nombre) if cliente else "",
-        cliente_nit=cliente.nit if cliente else "",
-        cliente_celular=cliente.celular if cliente else "",
-        cliente_direccion=capitalizar(cliente.direccion) if cliente else "",
+        cliente_nit=a_mayusculas(cliente.nit) if cliente else "",
+        cliente_celular=a_mayusculas(cliente.celular) if cliente else "",
+        cliente_direccion=a_mayusculas(cliente.direccion) if cliente else "",
     )
     db.add(db_cot)
     db.flush()
@@ -304,7 +306,7 @@ def update_cotizacion(db: Session, cotizacion_id: int, cot: CotizacionUpdate):
     db_cot = db.query(Cotizacion).filter(Cotizacion.id == cotizacion_id).first()
     if not db_cot:
         return None
-    if db_cot.estado != ESTADO_ENVIADO:
+    if (db_cot.estado or "").upper() != ESTADO_ENVIADO:
         raise HTTPException(status_code=400, detail="Solo se pueden editar cotizaciones en estado Enviado")
     if db_cot.venta_id:
         raise HTTPException(status_code=400, detail="No se puede editar una cotización convertida en venta")
@@ -319,24 +321,24 @@ def update_cotizacion(db: Session, cotizacion_id: int, cot: CotizacionUpdate):
         cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
         if cliente:
             db_cot.cliente_razon_social = a_mayusculas(cliente.nombre)
-            db_cot.cliente_nit = cliente.nit
-            db_cot.cliente_celular = cliente.celular
-            db_cot.cliente_direccion = capitalizar(cliente.direccion)
+            db_cot.cliente_nit = a_mayusculas(cliente.nit)
+            db_cot.cliente_celular = a_mayusculas(cliente.celular)
+            db_cot.cliente_direccion = a_mayusculas(cliente.direccion)
     if cot.con_factura is not None:
         db_cot.con_factura = bool(cot.con_factura)
     if cot.incluir_imagenes is not None:
         db_cot.incluir_imagenes = bool(cot.incluir_imagenes)
     if cot.modalidad_pago is not None:
-        db_cot.modalidad_pago = capitalizar(cot.modalidad_pago)
+        db_cot.modalidad_pago = a_mayusculas(cot.modalidad_pago)
     if cot.forma_pago is not None:
-        db_cot.forma_pago = cot.forma_pago
+        db_cot.forma_pago = a_mayusculas(cot.forma_pago)
     if cot.descuento is not None:
         db_cot.descuento = _q(cot.descuento)
     if cot.validez_dias is not None:
         db_cot.validez_dias = int(cot.validez_dias)
         db_cot.fecha_vencimiento = db_cot.fecha + timedelta(days=int(cot.validez_dias))
     if cot.terminos_condiciones is not None:
-        db_cot.terminos_condiciones = capitalizar(cot.terminos_condiciones)
+        db_cot.terminos_condiciones = a_mayusculas(cot.terminos_condiciones)
 
     if cot.detalles is not None:
         if not cot.detalles:
@@ -368,11 +370,12 @@ def confirmar_cotizacion(db: Session, cotizacion_id: int):
     db_cot = db.query(Cotizacion).filter(Cotizacion.id == cotizacion_id).first()
     if not db_cot:
         return None
-    if db_cot.estado == ESTADO_CONFIRMADO:
+    estado_actual = (db_cot.estado or "").upper()
+    if estado_actual == ESTADO_CONFIRMADO:
         raise HTTPException(status_code=400, detail="La cotización ya está confirmada")
-    if db_cot.estado == ESTADO_VENCIDO:
-        raise HTTPException(status_code=400, detail="No se puede confirmar una cotización vencida")
-    if db_cot.estado != ESTADO_ENVIADO:
+    if estado_actual == ESTADO_VENCIDO:
+        raise HTTPException(status_code=400, detail="La cotización está vencida")
+    if estado_actual != ESTADO_ENVIADO:
         raise HTTPException(status_code=400, detail="Solo se pueden confirmar cotizaciones enviadas")
 
     db_cot.estado = ESTADO_CONFIRMADO
@@ -387,7 +390,7 @@ def delete_cotizacion(db: Session, cotizacion_id: int):
         return None
     if db_cot.venta_id:
         raise HTTPException(status_code=400, detail="No se puede eliminar una cotización convertida en venta")
-    if db_cot.estado == ESTADO_CONFIRMADO:
+    if (db_cot.estado or "").upper() == ESTADO_CONFIRMADO:
         raise HTTPException(status_code=400, detail="No se puede eliminar una cotización confirmada")
 
     db_cot.activo = False
@@ -400,7 +403,7 @@ def convertir_en_venta(db: Session, cotizacion_id: int, payload: ConvertirVentaR
     db_cot = db.query(Cotizacion).filter(Cotizacion.id == cotizacion_id).first()
     if not db_cot:
         return None
-    if db_cot.estado != ESTADO_CONFIRMADO:
+    if (db_cot.estado or "").upper() != ESTADO_CONFIRMADO:
         raise HTTPException(status_code=400, detail="Solo se puede convertir en venta una cotización confirmada")
     if db_cot.venta_id:
         raise HTTPException(status_code=400, detail="Esta cotización ya fue convertida en venta")
@@ -419,7 +422,7 @@ def convertir_en_venta(db: Session, cotizacion_id: int, payload: ConvertirVentaR
             raise HTTPException(status_code=400, detail=f"Estado {payload.estado_id} no existe")
         estado_id = payload.estado_id
     else:
-        estado_pendiente = _get_estado_por_nombre(db, "Pendiente")
+        estado_pendiente = _get_estado_por_nombre(db, "PENDIENTE")
         estado_id = estado_pendiente.id
 
     try:

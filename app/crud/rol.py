@@ -3,7 +3,7 @@ from app.models.rol import Rol
 from app.models.modulo import Modulo
 from app.models.rol_modulo import RolModulo
 from app.schemas.rol import RolCreate
-from app.utils import capitalizar
+from app.utils import a_mayusculas
 
 def get_rol(db: Session, rol_id: int):
     return db.query(Rol).filter(Rol.id == rol_id).first()
@@ -12,7 +12,7 @@ def get_roles(db: Session, skip: int = 0, limit: int = 100):
     return db.query(Rol).offset(skip).limit(limit).all()
 
 def create_rol(db: Session, rol: RolCreate):
-    db_rol = Rol(nombre=capitalizar(rol.nombre))
+    db_rol = Rol(nombre=a_mayusculas(rol.nombre))
     db.add(db_rol)
     db.flush()
 
@@ -32,7 +32,7 @@ def create_rol(db: Session, rol: RolCreate):
 def update_rol(db: Session, rol_id: int, rol: RolCreate):
     db_rol = get_rol(db, rol_id)
     if db_rol:
-        db_rol.nombre = capitalizar(rol.nombre)
+        db_rol.nombre = a_mayusculas(rol.nombre)
         db.commit()
         db.refresh(db_rol)
     return db_rol

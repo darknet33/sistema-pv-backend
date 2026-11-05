@@ -4,7 +4,7 @@ from app.models.cliente import Cliente
 from app.models.venta import Venta
 from app.models.cotizacion import Cotizacion
 from app.schemas.cliente import ClienteCreate
-from app.utils import capitalizar
+from app.utils import a_mayusculas
 
 def get_cliente(db: Session, cliente_id: int):
     return db.query(Cliente).filter(Cliente.id == cliente_id).first()
@@ -14,10 +14,10 @@ def get_clientes(db: Session, skip: int = 0, limit: int = 100):
 
 def create_cliente(db: Session, cliente: ClienteCreate):
     db_cliente = Cliente(
-        nombre=capitalizar(cliente.nombre),
-        nit=cliente.nit,
-        celular=cliente.celular,
-        direccion=capitalizar(cliente.direccion)
+        nombre=a_mayusculas(cliente.nombre),
+        nit=a_mayusculas(cliente.nit),
+        celular=a_mayusculas(cliente.celular),
+        direccion=a_mayusculas(cliente.direccion)
     )
     db.add(db_cliente)
     db.commit()
@@ -27,10 +27,10 @@ def create_cliente(db: Session, cliente: ClienteCreate):
 def update_cliente(db: Session, cliente_id: int, cliente: ClienteCreate):
     db_cliente = get_cliente(db, cliente_id)
     if db_cliente:
-        db_cliente.nombre = capitalizar(cliente.nombre)
-        db_cliente.nit = cliente.nit
-        db_cliente.celular = cliente.celular
-        db_cliente.direccion = capitalizar(cliente.direccion)
+        db_cliente.nombre = a_mayusculas(cliente.nombre)
+        db_cliente.nit = a_mayusculas(cliente.nit)
+        db_cliente.celular = a_mayusculas(cliente.celular)
+        db_cliente.direccion = a_mayusculas(cliente.direccion)
         db.commit()
         db.refresh(db_cliente)
     return db_cliente

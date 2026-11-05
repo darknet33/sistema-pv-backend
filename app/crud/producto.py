@@ -7,7 +7,7 @@ from app.models.venta_detalle import VentaDetalle
 from app.models.cotizacion_detalle import CotizacionDetalle
 from app.models.nota_entrega import NotaEntregaDetalle
 from app.schemas.producto import ProductoCreate, ProductoUpdate
-from app.utils import capitalizar
+from app.utils import a_mayusculas
 from app.crud.producto_unidad import (
     set_unidades_producto, get_unidades_producto, build_unidad_response, build_unidad_principal
 )
@@ -79,11 +79,11 @@ def _build_full_response(db: Session, prod: Producto, en_uso: bool = None):
 
 def create_producto(db: Session, producto: ProductoCreate, usuario_id: int = None):
     db_producto = Producto(
-        codigo=producto.codigo,
+        codigo=a_mayusculas(producto.codigo),
         categoria_id=producto.categoria_id,
-        descripcion=capitalizar(producto.descripcion),
-        marca=capitalizar(producto.marca),
-        procedencia=capitalizar(producto.procedencia),
+        descripcion=a_mayusculas(producto.descripcion),
+        marca=a_mayusculas(producto.marca),
+        procedencia=a_mayusculas(producto.procedencia),
         precio=producto.precio,
         utilidad=producto.utilidad,
         stock_inicial=producto.stock_inicial,
@@ -110,12 +110,14 @@ def update_producto(db: Session, producto_id: int, producto: ProductoUpdate):
         return None
     for key, value in producto.model_dump(exclude_unset=True, exclude={"unidades"}).items():
         setattr(db_producto, key, value)
+    if "codigo" in producto.model_fields_set and producto.codigo is not None:
+        db_producto.codigo = a_mayusculas(producto.codigo)
     if "descripcion" in producto.model_fields_set and producto.descripcion is not None:
-        db_producto.descripcion = capitalizar(producto.descripcion)
+        db_producto.descripcion = a_mayusculas(producto.descripcion)
     if "marca" in producto.model_fields_set and producto.marca is not None:
-        db_producto.marca = capitalizar(producto.marca)
+        db_producto.marca = a_mayusculas(producto.marca)
     if "procedencia" in producto.model_fields_set and producto.procedencia is not None:
-        db_producto.procedencia = capitalizar(producto.procedencia)
+        db_producto.procedencia = a_mayusculas(producto.procedencia)
     if producto.unidades is not None:
         set_unidades_producto(db, db_producto.id, producto.unidades)
     db.commit()
